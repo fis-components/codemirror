@@ -1,0 +1,7 @@
+{
+    "repos": "https://github.com/codemirror/codemirror",
+    "version": "5.6.0",
+    "description": "In-browser code editor http://codemirror.net/",
+    "name": "codemirror",
+    "main": "codemirror.js"
+}
