@@ -81,6 +81,7 @@
             'case',
             'for',
             'while',
+            'until',
             'module',
             'then',
             'catch',

@@ -143,6 +143,7 @@
             });
         },
         destroy: function () {
+            closeArgHints(this);
             if (this.worker) {
                 this.worker.terminate();
                 this.worker = null;

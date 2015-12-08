@@ -33,19 +33,45 @@
         // Should underscores in words open/close em/strong?
         if (modeCfg.underscoresBreakWords === undefined)
             modeCfg.underscoresBreakWords = true;
-        // Turn on fenced code blocks? ("```" to start/end)
-        if (modeCfg.fencedCodeBlocks === undefined)
-            modeCfg.fencedCodeBlocks = false;
+        // Use `fencedCodeBlocks` to configure fenced code blocks. false to
+        // disable, string to specify a precise regexp that the fence should
+        // match, and true to allow three or more backticks or tildes (as
+        // per CommonMark).
         // Turn on task lists? ("- [ ] " and "- [x] ")
         if (modeCfg.taskLists === undefined)
             modeCfg.taskLists = false;
         // Turn on strikethrough syntax
         if (modeCfg.strikethrough === undefined)
             modeCfg.strikethrough = false;
+        // Allow token types to be overridden by user-provided token types.
+        if (modeCfg.tokenTypeOverrides === undefined)
+            modeCfg.tokenTypeOverrides = {};
         var codeDepth = 0;
-        var header = 'header', code = 'comment', quote = 'quote', list1 = 'variable-2', list2 = 'variable-3', list3 = 'keyword', hr = 'hr', image = 'tag', formatting = 'formatting', linkinline = 'link', linkemail = 'link', linktext = 'link', linkhref = 'string', em = 'em', strong = 'strong', strikethrough = 'strikethrough';
+        var tokenTypes = {
+            header: 'header',
+            code: 'comment',
+            quote: 'quote',
+            list1: 'variable-2',
+            list2: 'variable-3',
+            list3: 'keyword',
+            hr: 'hr',
+            image: 'tag',
+            formatting: 'formatting',
+            linkInline: 'link',
+            linkEmail: 'link',
+            linkText: 'link',
+            linkHref: 'string',
+            em: 'em',
+            strong: 'strong',
+            strikethrough: 'strikethrough'
+        };
+        for (var tokenType in tokenTypes) {
+            if (tokenTypes.hasOwnProperty(tokenType) && modeCfg.tokenTypeOverrides[tokenType]) {
+                tokenTypes[tokenType] = modeCfg.tokenTypeOverrides[tokenType];
+            }
+        }
         var hrRE = /^([*\-_])(?:\s*\1){2,}\s*$/, ulRE = /^[*\-+]\s+/, olRE = /^[0-9]+([.)])\s+/, taskListRE = /^\[(x| )\](?=\s)/    // Must follow ulRE or olRE
-, atxHeaderRE = /^(#+)(?: |$)/, setextHeaderRE = /^ *(?:\={1,}|-{1,})\s*$/, textRE = /^[^#!\[\]*_\\<>` "'(~]+/;
+, atxHeaderRE = modeCfg.allowAtxHeaderWithoutSpace ? /^(#+)/ : /^(#+)(?: |$)/, setextHeaderRE = /^ *(?:\={1,}|-{1,})\s*$/, textRE = /^[^#!\[\]*_\\<>` "'(~]+/, fencedCodeRE = new RegExp('^(' + (modeCfg.fencedCodeBlocks === true ? '~~~+|```+' : modeCfg.fencedCodeBlocks) + ')[ \\t]*([\\w+#]*)');
         function switchInline(stream, state, f) {
             state.f = state.inline = f;
             return f(stream, state);
@@ -53,6 +79,9 @@
         function switchBlock(stream, state, f) {
             state.f = state.block = f;
             return f(stream, state);
+        }
+        function lineIsEmpty(line) {
+            return !line || !/\S/.test(line.string);
         }
         // Blocks
         function blankLine(state) {
@@ -76,7 +105,8 @@
             state.trailingSpace = 0;
             state.trailingSpaceNewLine = false;
             // Mark this line as blank
-            state.thisLineHasContent = false;
+            state.prevLine = state.thisLine;
+            state.thisLine = null;
             return null;
         }
         function blockNormal(stream, state) {
@@ -103,10 +133,10 @@
             var match = null;
             if (state.indentationDiff >= 4) {
                 stream.skipToEnd();
-                if (prevLineIsIndentedCode || !state.prevLineHasContent) {
+                if (prevLineIsIndentedCode || lineIsEmpty(state.prevLine)) {
                     state.indentation -= 4;
                     state.indentedCode = true;
-                    return code;
+                    return tokenTypes.code;
                 } else {
                     return null;
                 }
@@ -118,7 +148,7 @@
                     state.formatting = 'header';
                 state.f = state.inline;
                 return getType(state);
-            } else if (state.prevLineHasContent && !state.quote && !prevLineIsList && !prevLineIsIndentedCode && (match = stream.match(setextHeaderRE))) {
+            } else if (!lineIsEmpty(state.prevLine) && !state.quote && !prevLineIsList && !prevLineIsIndentedCode && (match = stream.match(setextHeaderRE))) {
                 state.header = match[0].charAt(0) == '=' ? 1 : 2;
                 if (modeCfg.highlightFormatting)
                     state.formatting = 'header';
@@ -134,8 +164,8 @@
                 return switchInline(stream, state, footnoteLink);
             } else if (stream.match(hrRE, true)) {
                 state.hr = true;
-                return hr;
-            } else if ((!state.prevLineHasContent || prevLineIsList) && (stream.match(ulRE, false) || stream.match(olRE, false))) {
+                return tokenTypes.hr;
+            } else if ((lineIsEmpty(state.prevLine) || prevLineIsList) && (stream.match(ulRE, false) || stream.match(olRE, false))) {
                 var listType = null;
                 if (stream.match(ulRE, true)) {
                     listType = 'ul';
@@ -143,7 +173,7 @@
                     stream.match(olRE, true);
                     listType = 'ol';
                 }
-                state.indentation += 4;
+                state.indentation = stream.column() + stream.current().length;
                 state.list = true;
                 state.listDepth++;
                 if (modeCfg.taskLists && stream.match(taskListRE, false)) {
@@ -156,9 +186,10 @@
                         'list-' + listType
                     ];
                 return getType(state);
-            } else if (modeCfg.fencedCodeBlocks && stream.match(/^```[ \t]*([\w+#]*)/, true)) {
+            } else if (modeCfg.fencedCodeBlocks && (match = stream.match(fencedCodeRE, true))) {
+                state.fencedChars = match[1];
                 // try switching mode
-                state.localMode = getMode(RegExp.$1);
+                state.localMode = getMode(match[2]);
                 if (state.localMode)
                     state.localState = state.localMode.startState();
                 state.f = state.block = local;
@@ -179,7 +210,7 @@
             return style;
         }
         function local(stream, state) {
-            if (stream.sol() && stream.match('```', false)) {
+            if (stream.sol() && state.fencedChars && stream.match(state.fencedChars, false)) {
                 state.localMode = state.localState = null;
                 state.f = state.block = leavingLocal;
                 return null;
@@ -187,13 +218,14 @@
                 return state.localMode.token(stream, state.localState);
             } else {
                 stream.skipToEnd();
-                return code;
+                return tokenTypes.code;
             }
         }
         function leavingLocal(stream, state) {
-            stream.match('```');
+            stream.match(state.fencedChars);
             state.block = blockNormal;
             state.f = inlineNormal;
+            state.fencedChars = null;
             if (modeCfg.highlightFormatting)
                 state.formatting = 'code-block';
             state.code = true;
@@ -205,19 +237,19 @@
         function getType(state) {
             var styles = [];
             if (state.formatting) {
-                styles.push(formatting);
+                styles.push(tokenTypes.formatting);
                 if (typeof state.formatting === 'string')
                     state.formatting = [state.formatting];
                 for (var i = 0; i < state.formatting.length; i++) {
-                    styles.push(formatting + '-' + state.formatting[i]);
+                    styles.push(tokenTypes.formatting + '-' + state.formatting[i]);
                     if (state.formatting[i] === 'header') {
-                        styles.push(formatting + '-' + state.formatting[i] + '-' + state.header);
+                        styles.push(tokenTypes.formatting + '-' + state.formatting[i] + '-' + state.header);
                     }
                     // Add `formatting-quote` and `formatting-quote-#` for blockquotes
                     // Add `error` instead if the maximum blockquote nesting depth is passed
                     if (state.formatting[i] === 'quote') {
                         if (!modeCfg.maxBlockquoteDepth || modeCfg.maxBlockquoteDepth >= state.quote) {
-                            styles.push(formatting + '-' + state.formatting[i] + '-' + state.quote);
+                            styles.push(tokenTypes.formatting + '-' + state.formatting[i] + '-' + state.quote);
                         } else {
                             styles.push('error');
                         }
@@ -233,46 +265,45 @@
                 return styles.length ? styles.join(' ') : null;
             }
             if (state.linkHref) {
-                styles.push(linkhref, 'url');
+                styles.push(tokenTypes.linkHref, 'url');
             } else {
                 // Only apply inline styles to non-url text
                 if (state.strong) {
-                    styles.push(strong);
+                    styles.push(tokenTypes.strong);
                 }
                 if (state.em) {
-                    styles.push(em);
+                    styles.push(tokenTypes.em);
                 }
                 if (state.strikethrough) {
-                    styles.push(strikethrough);
+                    styles.push(tokenTypes.strikethrough);
                 }
                 if (state.linkText) {
-                    styles.push(linktext);
+                    styles.push(tokenTypes.linkText);
                 }
                 if (state.code) {
-                    styles.push(code);
+                    styles.push(tokenTypes.code);
                 }
             }
             if (state.header) {
-                styles.push(header);
-                styles.push(header + '-' + state.header);
+                styles.push(tokenTypes.header, tokenTypes.header + '-' + state.header);
             }
             if (state.quote) {
-                styles.push(quote);
+                styles.push(tokenTypes.quote);
                 // Add `quote-#` where the maximum for `#` is modeCfg.maxBlockquoteDepth
                 if (!modeCfg.maxBlockquoteDepth || modeCfg.maxBlockquoteDepth >= state.quote) {
-                    styles.push(quote + '-' + state.quote);
+                    styles.push(tokenTypes.quote + '-' + state.quote);
                 } else {
-                    styles.push(quote + '-' + modeCfg.maxBlockquoteDepth);
+                    styles.push(tokenTypes.quote + '-' + modeCfg.maxBlockquoteDepth);
                 }
             }
             if (state.list !== false) {
                 var listMod = (state.listDepth - 1) % 3;
                 if (!listMod) {
-                    styles.push(list1);
+                    styles.push(tokenTypes.list1);
                 } else if (listMod === 1) {
-                    styles.push(list2);
+                    styles.push(tokenTypes.list2);
                 } else {
-                    styles.push(list3);
+                    styles.push(tokenTypes.list3);
                 }
             }
             if (state.trailingSpaceNewLine) {
@@ -322,7 +353,8 @@
                 stream.next();
                 if (modeCfg.highlightFormatting) {
                     var type = getType(state);
-                    return type ? type + ' formatting-escape' : 'formatting-escape';
+                    var formattingEscape = tokenTypes.formatting + '-escape';
+                    return type ? type + ' ' + formattingEscape : formattingEscape;
                 }
             }
             // Matches link titles present on next line
@@ -335,7 +367,7 @@
                 matchCh = (matchCh + '').replace(/([.?*+^$[\]\\(){}|-])/g, '\\$1');
                 var regex = '^\\s*(?:[^' + matchCh + '\\\\]+|\\\\\\\\|\\\\.)' + matchCh;
                 if (stream.match(new RegExp(regex), true)) {
-                    return linkhref;
+                    return tokenTypes.linkHref;
                 }
             }
             // If this block is changed, it may need to be updated in GFM mode
@@ -366,7 +398,7 @@
             if (ch === '!' && stream.match(/\[[^\]]*\] ?(?:\(|\[)/, false)) {
                 stream.match(/\[[^\]]*\]/);
                 state.inline = state.f = linkHref;
-                return image;
+                return tokenTypes.image;
             }
             if (ch === '[' && stream.match(/.*\](\(.*\)| ?\[.*\])/, false)) {
                 state.linkText = true;
@@ -392,7 +424,7 @@
                 } else {
                     type = '';
                 }
-                return type + linkinline;
+                return type + tokenTypes.linkInline;
             }
             if (ch === '<' && stream.match(/^[^> \\]+@(?:[^\\>]|\\.)+>/, false)) {
                 state.f = state.inline = linkInline;
@@ -404,7 +436,7 @@
                 } else {
                     type = '';
                 }
-                return type + linkemail;
+                return type + tokenTypes.linkEmail;
             }
             if (ch === '<' && stream.match(/^(!--|\w)/, false)) {
                 var end = stream.string.indexOf('>', stream.pos);
@@ -524,10 +556,10 @@
                 } else {
                     type = '';
                 }
-                return type + linkinline;
+                return type + tokenTypes.linkInline;
             }
             stream.match(/^[^>]+/, true);
-            return linkinline;
+            return tokenTypes.linkInline;
         }
         function linkHref(stream, state) {
             // Check if space, and return NULL if so (to avoid marking the space)
@@ -584,7 +616,7 @@
                 return returnType;
             }
             stream.match(/^[^\]]+/, true);
-            return linktext;
+            return tokenTypes.linkText;
         }
         function footnoteUrl(stream, state) {
             // Check if space, and return NULL if so (to avoid marking the space)
@@ -602,7 +634,7 @@
                 stream.match(/^(?:\s+(?:"(?:[^"\\]|\\\\|\\.)+"|'(?:[^'\\]|\\\\|\\.)+'|\((?:[^)\\]|\\\\|\\.)+\)))?/, true);
             }
             state.f = state.inline = inlineNormal;
-            return linkhref + ' url';
+            return tokenTypes.linkHref + ' url';
         }
         var savedInlineRE = [];
         function inlineRE(endChar) {
@@ -619,8 +651,8 @@
             startState: function () {
                 return {
                     f: blockNormal,
-                    prevLineHasContent: false,
-                    thisLineHasContent: false,
+                    prevLine: null,
+                    thisLine: null,
                     block: blockNormal,
                     htmlState: null,
                     indentation: 0,
@@ -640,14 +672,15 @@
                     quote: 0,
                     trailingSpace: 0,
                     trailingSpaceNewLine: false,
-                    strikethrough: false
+                    strikethrough: false,
+                    fencedChars: null
                 };
             },
             copyState: function (s) {
                 return {
                     f: s.f,
-                    prevLineHasContent: s.prevLineHasContent,
-                    thisLineHasContent: s.thisLineHasContent,
+                    prevLine: s.prevLine,
+                    thisLine: s.thisLine,
                     block: s.block,
                     htmlState: s.htmlState && CodeMirror.copyState(htmlMode, s.htmlState),
                     indentation: s.indentation,
@@ -657,6 +690,7 @@
                     text: s.text,
                     formatting: false,
                     linkTitle: s.linkTitle,
+                    code: s.code,
                     em: s.em,
                     strong: s.strong,
                     strikethrough: s.strikethrough,
@@ -669,29 +703,28 @@
                     indentedCode: s.indentedCode,
                     trailingSpace: s.trailingSpace,
                     trailingSpaceNewLine: s.trailingSpaceNewLine,
-                    md_inside: s.md_inside
+                    md_inside: s.md_inside,
+                    fencedChars: s.fencedChars
                 };
             },
             token: function (stream, state) {
                 // Reset state.formatting
                 state.formatting = false;
-                if (stream.sol()) {
-                    var forceBlankLine = !!state.header || state.hr;
+                if (stream != state.thisLine) {
+                    var forceBlankLine = state.header || state.hr;
                     // Reset state.header and state.hr
                     state.header = 0;
                     state.hr = false;
                     if (stream.match(/^\s*$/, true) || forceBlankLine) {
-                        state.prevLineHasContent = false;
                         blankLine(state);
-                        return forceBlankLine ? this.token(stream, state) : null;
-                    } else {
-                        state.prevLineHasContent = state.thisLineHasContent;
-                        state.thisLineHasContent = true;
+                        if (!forceBlankLine)
+                            return null;
+                        state.prevLine = null;
                     }
+                    state.prevLine = state.thisLine;
+                    state.thisLine = stream;
                     // Reset state.taskList
                     state.taskList = false;
-                    // Reset state.code
-                    state.code = false;
                     // Reset state.trailingSpace
                     state.trailingSpace = 0;
                     state.trailingSpaceNewLine = false;

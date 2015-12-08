@@ -205,4 +205,4 @@
         };
     });
     CodeMirror.defineMIME('text/x-elm', 'elm');
-})());
+}));

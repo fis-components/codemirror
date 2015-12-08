@@ -1,6 +1,6 @@
 // CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
-// Originall written by Alf Nielsen, re-written by Michael Zhou
+// Originally written by Alf Nielsen, re-written by Michael Zhou
 
 (function (mod) {
     // AMD

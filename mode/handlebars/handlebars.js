@@ -33,11 +33,11 @@
             },
             // Double and single quotes
             {
-                regex: /"(?:[^\\]|\\.)*?"/,
+                regex: /"(?:[^\\"]|\\.)*"?/,
                 token: 'string'
             },
             {
-                regex: /'(?:[^\\]|\\.)*?'/,
+                regex: /'(?:[^\\']|\\.)*'?/,
                 token: 'string'
             },
             // Handlebars keywords

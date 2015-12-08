@@ -11,18 +11,20 @@
         start: [
             // string and byte string
             {
-                regex: /b?"(?:[^\\]|\\.)*?"/,
-                token: 'string'
+                regex: /b?"/,
+                token: 'string',
+                next: 'string'
             },
             // raw string and raw byte string
             {
-                regex: /(b?r)(#*)(".*?)("\2)/,
-                token: [
-                    'string',
-                    'string',
-                    'string',
-                    'string'
-                ]
+                regex: /b?r"/,
+                token: 'string',
+                next: 'string_raw'
+            },
+            {
+                regex: /b?r#+"/,
+                token: 'string',
+                next: 'string_raw_hash'
             },
             // character
             {
@@ -98,6 +100,39 @@
             {
                 regex: /[\}\]\)]/,
                 dedent: true
+            }
+        ],
+        string: [
+            {
+                regex: /"/,
+                token: 'string',
+                next: 'start'
+            },
+            {
+                regex: /(?:[^\\"]|\\(?:.|$))*/,
+                token: 'string'
+            }
+        ],
+        string_raw: [
+            {
+                regex: /"/,
+                token: 'string',
+                next: 'start'
+            },
+            {
+                regex: /[^"]*/,
+                token: 'string'
+            }
+        ],
+        string_raw_hash: [
+            {
+                regex: /"#+/,
+                token: 'string',
+                next: 'start'
+            },
+            {
+                regex: /(?:[^"]|"(?!#))*/,
+                token: 'string'
             }
         ],
         comment: [

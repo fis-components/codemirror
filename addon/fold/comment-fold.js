@@ -26,7 +26,7 @@
             }
             if (pass == 1 && found < start.ch)
                 return;
-            if (/comment/.test(cm.getTokenTypeAt(CodeMirror.Pos(line, found + 1)))) {
+            if (/comment/.test(cm.getTokenTypeAt(CodeMirror.Pos(line, found + 1))) && (lineText.slice(found - endToken.length, found) == endToken || !/comment/.test(cm.getTokenTypeAt(CodeMirror.Pos(line, found))))) {
                 startCh = found + startToken.length;
                 break;
             }

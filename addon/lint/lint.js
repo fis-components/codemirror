@@ -73,6 +73,7 @@
         this.onMouseOver = function (e) {
             onMouseOver(cm, e);
         };
+        this.waitingFor = 0;
     }
     function parseOptions(_cm, options) {
         if (options instanceof Function)
@@ -125,6 +126,23 @@
         tip.appendChild(document.createTextNode(ann.message));
         return tip;
     }
+    function lintAsync(cm, getAnnotations, passOptions) {
+        var state = cm.state.lint;
+        var id = ++state.waitingFor;
+        function abort() {
+            id = -1;
+            cm.off('change', abort);
+        }
+        cm.on('change', abort);
+        getAnnotations(cm.getValue(), function (annotations, arg2) {
+            cm.off('change', abort);
+            if (state.waitingFor != id)
+                return;
+            if (arg2 && annotations instanceof CodeMirror)
+                annotations = arg2;
+            updateLinting(cm, annotations);
+        }, passOptions, cm);
+    }
     function startLinting(cm) {
         var state = cm.state.lint, options = state.options;
         var passOptions = options.options || options;
@@ -132,10 +150,11 @@
         var getAnnotations = options.getAnnotations || cm.getHelper(CodeMirror.Pos(0, 0), 'lint');
         if (!getAnnotations)
             return;
-        if (options.async || getAnnotations.async)
-            getAnnotations(cm.getValue(), updateLinting, passOptions, cm);
-        else
+        if (options.async || getAnnotations.async) {
+            lintAsync(cm, getAnnotations, passOptions);
+        } else {
             updateLinting(cm, getAnnotations(cm.getValue(), passOptions, cm));
+        }
     }
     function updateLinting(cm, annotationsNotSorted) {
         clearMarks(cm);

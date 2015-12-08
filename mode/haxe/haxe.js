@@ -10,79 +10,76 @@
     CodeMirror.defineMode('haxe', function (config, parserConfig) {
         var indentUnit = config.indentUnit;
         // Tokenizer
-        var keywords = function () {
-            function kw(type) {
-                return {
-                    type: type,
-                    style: 'keyword'
-                };
-            }
-            var A = kw('keyword a'), B = kw('keyword b'), C = kw('keyword c');
-            var operator = kw('operator'), atom = {
-                    type: 'atom',
-                    style: 'atom'
-                }, attribute = {
-                    type: 'attribute',
-                    style: 'attribute'
-                };
-            var type = kw('typedef');
+        function kw(type) {
             return {
-                'if': A,
-                'while': A,
-                'else': B,
-                'do': B,
-                'try': B,
-                'return': C,
-                'break': C,
-                'continue': C,
-                'new': C,
-                'throw': C,
-                'var': kw('var'),
-                'inline': attribute,
-                'static': attribute,
-                'using': kw('import'),
-                'public': attribute,
-                'private': attribute,
-                'cast': kw('cast'),
-                'import': kw('import'),
-                'macro': kw('macro'),
-                'function': kw('function'),
-                'catch': kw('catch'),
-                'untyped': kw('untyped'),
-                'callback': kw('cb'),
-                'for': kw('for'),
-                'switch': kw('switch'),
-                'case': kw('case'),
-                'default': kw('default'),
-                'in': operator,
-                'never': kw('property_access'),
-                'trace': kw('trace'),
-                'class': type,
-                'abstract': type,
-                'enum': type,
-                'interface': type,
-                'typedef': type,
-                'extends': type,
-                'implements': type,
-                'dynamic': type,
-                'true': atom,
-                'false': atom,
-                'null': atom
+                type: type,
+                style: 'keyword'
             };
-        }();
+        }
+        var A = kw('keyword a'), B = kw('keyword b'), C = kw('keyword c');
+        var operator = kw('operator'), atom = {
+                type: 'atom',
+                style: 'atom'
+            }, attribute = {
+                type: 'attribute',
+                style: 'attribute'
+            };
+        var type = kw('typedef');
+        var keywords = {
+            'if': A,
+            'while': A,
+            'else': B,
+            'do': B,
+            'try': B,
+            'return': C,
+            'break': C,
+            'continue': C,
+            'new': C,
+            'throw': C,
+            'var': kw('var'),
+            'inline': attribute,
+            'static': attribute,
+            'using': kw('import'),
+            'public': attribute,
+            'private': attribute,
+            'cast': kw('cast'),
+            'import': kw('import'),
+            'macro': kw('macro'),
+            'function': kw('function'),
+            'catch': kw('catch'),
+            'untyped': kw('untyped'),
+            'callback': kw('cb'),
+            'for': kw('for'),
+            'switch': kw('switch'),
+            'case': kw('case'),
+            'default': kw('default'),
+            'in': operator,
+            'never': kw('property_access'),
+            'trace': kw('trace'),
+            'class': type,
+            'abstract': type,
+            'enum': type,
+            'interface': type,
+            'typedef': type,
+            'extends': type,
+            'implements': type,
+            'dynamic': type,
+            'true': atom,
+            'false': atom,
+            'null': atom
+        };
         var isOperatorChar = /[+\-*&%=<>!?|]/;
         function chain(stream, state, f) {
             state.tokenize = f;
             return f(stream, state);
         }
-        function nextUntilUnescaped(stream, end) {
+        function toUnescaped(stream, end) {
             var escaped = false, next;
             while ((next = stream.next()) != null) {
                 if (next == end && !escaped)
-                    return false;
+                    return true;
                 escaped = !escaped && next == '\\';
             }
-            return escaped;
         }
         // Used as scratch variables to communicate multiple values without
         // consing up tons of objects.
@@ -94,18 +91,18 @@
         }
         function haxeTokenBase(stream, state) {
             var ch = stream.next();
-            if (ch == '"' || ch == '\'')
+            if (ch == '"' || ch == '\'') {
                 return chain(stream, state, haxeTokenString(ch));
-            else if (/[\[\]{}\(\),;\:\.]/.test(ch))
+            } else if (/[\[\]{}\(\),;\:\.]/.test(ch)) {
                 return ret(ch);
-            else if (ch == '0' && stream.eat(/x/i)) {
+            } else if (ch == '0' && stream.eat(/x/i)) {
                 stream.eatWhile(/[\da-f]/i);
                 return ret('number', 'number');
             } else if (/\d/.test(ch) || ch == '-' && stream.eat(/\d/)) {
-                stream.match(/^\d*(?:\.\d*)?(?:[eE][+\-]?\d+)?/);
+                stream.match(/^\d*(?:\.\d*(?!\.))?(?:[eE][+\-]?\d+)?/);
                 return ret('number', 'number');
             } else if (state.reAllowed && (ch == '~' && stream.eat(/\//))) {
-                nextUntilUnescaped(stream, '/');
+                toUnescaped(stream, '/');
                 stream.eatWhile(/[gimsu]/);
                 return ret('regexp', 'string-2');
             } else if (ch == '/') {
@@ -143,7 +140,7 @@
         }
         function haxeTokenString(quote) {
             return function (stream, state) {
-                if (!nextUntilUnescaped(stream, quote))
+                if (toUnescaped(stream, quote))
                     state.tokenize = haxeTokenBase;
                 return ret('string', 'string');
             };
@@ -238,16 +235,28 @@
             pass.apply(null, arguments);
             return true;
         }
+        function inList(name, list) {
+            for (var v = list; v; v = v.next)
+                if (v.name == name)
+                    return true;
+            return false;
+        }
         function register(varname) {
             var state = cx.state;
             if (state.context) {
                 cx.marked = 'def';
-                for (var v = state.localVars; v; v = v.next)
-                    if (v.name == varname)
-                        return;
+                if (inList(varname, state.localVars))
+                    return;
                 state.localVars = {
                     name: varname,
                     next: state.localVars
+                };
+            } else if (state.globalVars) {
+                if (inList(varname, state.globalVars))
+                    return;
+                state.globalVars = {
+                    name: varname,
+                    next: state.globalVars
                 };
             }
         }
@@ -268,6 +277,7 @@
             cx.state.localVars = cx.state.context.vars;
             cx.state.context = cx.state.context.prev;
         }
+        popcontext.lex = true;
         function pushlex(type, info) {
             var result = function () {
                 var state = cx.state;
@@ -294,7 +304,6 @@
                 else
                     return cont(f);
             }
-            ;
             return f;
         }
         function statement(type) {
@@ -335,6 +344,8 @@
         function expression(type) {
             if (atomicTypes.hasOwnProperty(type))
                 return cont(maybeoperator);
+            if (type == 'type')
+                return cont(maybeoperator);
             if (type == 'function')
                 return cont(functiondef);
             if (type == 'keyword c')
@@ -344,7 +355,7 @@
             if (type == 'operator')
                 return cont(expression);
             if (type == '[')
-                return cont(pushlex(']'), commasep(expression, ']'), poplex, maybeoperator);
+                return cont(pushlex(']'), commasep(maybeexpression, ']'), poplex, maybeoperator);
             if (type == '{')
                 return cont(pushlex('}'), commasep(objprop, '}'), poplex, maybeoperator);
             return cont();
@@ -456,15 +467,18 @@
         function forspec1(type, value) {
             if (type == 'variable') {
                 register(value);
+                return cont(forin, expression);
+            } else {
+                return pass();
             }
-            return cont(pushlex(')'), pushcontext, forin, expression, poplex, statement, popcontext);
         }
         function forin(_type, value) {
             if (value == 'in')
                 return cont();
         }
         function functiondef(type, value) {
-            if (type == 'variable') {
+            //function names starting with upper-case letters are recognised as types, so cludging them together here.
+            if (type == 'variable' || type == 'type') {
                 register(value);
                 return cont(functiondef);
             }
@@ -508,7 +522,7 @@
                     'Dynamic',
                     'Array'
                 ];
-                return {
+                var state = {
                     tokenize: haxeTokenBase,
                     reAllowed: true,
                     kwAllowed: true,
@@ -519,6 +533,9 @@
                     context: parserConfig.localVars && { vars: parserConfig.localVars },
                     indented: 0
                 };
+                if (parserConfig.globalVars && typeof parserConfig.globalVars == 'object')
+                    state.globalVars = parserConfig.globalVars;
+                return state;
             },
             token: function (stream, state) {
                 if (stream.sol()) {

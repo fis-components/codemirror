@@ -99,6 +99,12 @@
             ext: ['clj']
         },
         {
+            name: 'Closure Stylesheets (GSS)',
+            mime: 'text/x-gss',
+            mode: 'css',
+            ext: ['gss']
+        },
+        {
             name: 'CMake',
             mime: 'text/x-cmake',
             mode: 'cmake',
@@ -441,7 +447,7 @@
         {
             name: 'Kotlin',
             mime: 'text/x-kotlin',
-            mode: 'kotlin',
+            mode: 'clike',
             ext: ['kt']
         },
         {
@@ -520,6 +526,15 @@
             file: /nginx.*\.conf$/i
         },
         {
+            name: 'NSIS',
+            mime: 'text/x-nsis',
+            mode: 'nsis',
+            ext: [
+                'nsh',
+                'nsi'
+            ]
+        },
+        {
             name: 'NTriples',
             mime: 'text/n-triples',
             mode: 'ntriples',
@@ -550,6 +565,12 @@
             mime: 'text/x-octave',
             mode: 'octave',
             ext: ['m']
+        },
+        {
+            name: 'Oz',
+            mime: 'text/x-oz',
+            mode: 'oz',
+            ext: ['oz']
         },
         {
             name: 'Pascal',
@@ -731,7 +752,8 @@
                 'bash',
                 'sh',
                 'zsh'
-            ]
+            ],
+            file: /^PKGBUILD$/
         },
         {
             name: 'Sieve',
@@ -996,6 +1018,28 @@
             mime: 'text/x-z80',
             mode: 'z80',
             ext: ['z80']
+        },
+        {
+            name: 'mscgen',
+            mime: 'text/x-mscgen',
+            mode: 'mscgen',
+            ext: [
+                'mscgen',
+                'mscin',
+                'msc'
+            ]
+        },
+        {
+            name: 'xu',
+            mime: 'text/x-xu',
+            mode: 'mscgen',
+            ext: ['xu']
+        },
+        {
+            name: 'msgenny',
+            mime: 'text/x-msgenny',
+            mode: 'mscgen',
+            ext: ['msgenny']
         }
     ];
     // Ensure all modes have a mime property for backwards compatibility
